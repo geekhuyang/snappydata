@@ -47,7 +47,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql._
 import org.apache.spark.storage.RDDBlockId
 import org.apache.spark.util.SnappyUtils
-import org.apache.spark.{Logging, SparkEnv}
+import org.apache.spark.{Logging, SparkContext, SparkEnv}
 
 /**
  * Encapsulates a Spark execution for use in query routing from JDBC.
@@ -323,7 +323,15 @@ object SparkSQLExecuteImpl {
     // indicates that the metadata is being packed too
     srh.setHasMetadata()
     DataSerializer.writeStringArray(tableNames.toArray, hdos)
-    DataSerializer.writeStringArray(columnNames, hdos)
+    SparkContext.activeContext.get() match {
+      case sc: SparkContext if (sc != null && sc.getConf.contains("spark.sql.caseSensitive") &&
+            sc.getConf.get("spark.sql.caseSensitive").equalsIgnoreCase("true")) =>
+          DataSerializer.writeStringArray(columnNames, hdos)
+      case _ =>
+        // SNAP-3315 making columnnames uppercase in metadata
+        DataSerializer.writeStringArray(columnNames.map(_.toUpperCase()), hdos)
+    }
+
     DataSerializer.writeBooleanArray(nullability.toArray, hdos)
     var i = 0
     while (i < colTypes.length) {
